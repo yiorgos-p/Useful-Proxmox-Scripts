@@ -140,10 +140,10 @@ except Exception:
         RESULTS["BACKUP_JOBS"]="NONE"
         return
     fi
-    printf "  %-22s %-8s %-18s %-14s %s\n" JOB ENABLED SCHEDULE STORAGE SELECTION
+    printf "  %-22s %-8s %-18s %-20s %s\n" JOB ENABLED SCHEDULE STORAGE SELECTION
     local id en sched st sel disabled=() n=0
     while IFS=$'\t' read -r id en sched st sel; do
-        printf "  %-22.22s %-8s %-18.18s %-14.14s %s\n" "$id" "$en" "$sched" "$st" "$sel"
+        printf "  %-22.22s %-8s %-18.18s %-20.20s %s\n" "$id" "$en" "$sched" "$st" "$sel"
         n=$((n + 1))
         [[ "$en" == no ]] && disabled+=("$id")
     done <<< "$jobs"
