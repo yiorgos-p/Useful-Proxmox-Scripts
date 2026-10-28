@@ -6,7 +6,7 @@ A read-only bash script that checks drive and storage health on a Proxmox VE hos
 
 1. **RAID controller** (if storcli/perccli/MegaCli is found): virtual drive state, battery backup/CacheVault status, and per-drive media errors, shield counter and temperature.
 2. **ZFS pools** (if any are imported): pool state, the worst READ/WRITE/CKSUM error seen on any device, scrub/resilver status, capacity and fragmentation.
-3. **SMART health** for any drive not fully hidden behind a RAID controller: reallocated/pending sectors, NVMe spare capacity, power-on hours, error log. Devices without SMART (USB sticks, SD-card modules) are noted and skipped.
+3. **SMART health** for any drive not fully hidden behind a RAID controller: reallocated/pending sectors, NVMe spare capacity, power-on hours, error log. Devices without SMART (USB sticks, SD-card modules) are noted and skipped. RAID virtual disks (PERC, MegaRAID, Smart Array) are left to the RAID section; without storcli/perccli installed you get one warning that the array isn't being checked.
 4. **Live IO stats**: 3 samples of `iostat -x`, 2 seconds apart, flagging devices running hot on utilization or await time. Skipped if sysstat isn't installed.
 5. **VM disk config audit**: scans `/etc/pve/qemu-server/*.conf` for risky combinations like `cache=writeback` on ZFS or `discard=on` without `iothread=1`.
 

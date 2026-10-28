@@ -109,7 +109,7 @@ check_raid_controller() {
 
     if ! $HAS_RAID; then
         echo -e "  No RAID controller / storcli not found — skipping RAID checks."
-        echo -e "  (If you have a controller, install storcli from Dell/Broadcom support site)"
+        echo -e "  (If you have a controller, install perccli from Dell or storcli from Broadcom)"
         return
     fi
 
@@ -459,6 +459,22 @@ check_direct_drives() {
             continue
         fi
 
+        # A RAID virtual disk (e.g. "PERC H730 Mini") has no SMART of its
+        # own — the physical disks behind it do, and only the controller
+        # tool can see them and the array state.
+        local model_l
+        model_l=$(lsblk -dno MODEL "$drive" 2>/dev/null | xargs)
+        if [[ "$model_l" =~ PERC|MegaRAID|MR9|LOGICAL\ VOLUME|Smart\ Array ]]; then
+            if $HAS_RAID; then
+                echo "    RAID virtual disk ($model_l) — checked above via storcli."
+                RESULTS["SMART_${drive}"]="VIA RAID CONTROLLER"
+            else
+                warn "$drive is a RAID virtual disk ($model_l) but storcli/perccli isn't installed — the array and its disks aren't being checked. Install perccli (Dell) or storcli (Broadcom)"
+                RESULTS["SMART_${drive}"]="RAID VD, UNCHECKED"
+            fi
+            continue
+        fi
+
         local info
         info=$(smartctl -i "$drive" 2>&1)
 
@@ -779,7 +795,7 @@ print_summary() {
         val="${RESULTS[$key]}"
         if echo "$val" | grep -qiE "FAIL|CRITICAL|OFFLINE|DEGRADED|PENDING|LOW SPARE|FAULTED|UNAVAIL|SUSPENDED|CKSUM"; then
             printf "  %-35s | ${RED}%s${NC}\n" "$key" "$val"
-        elif echo "$val" | grep -qiE "WARN|REBUILD|ERROR|BUSY|HIGH|REALLOCATED|SHIELD|FLAGGED|UNAVAILABLE|DISABLED"; then
+        elif echo "$val" | grep -qiE "WARN|REBUILD|ERROR|BUSY|HIGH|REALLOCATED|SHIELD|FLAGGED|UNAVAILABLE|DISABLED|UNCHECKED"; then
             printf "  %-35s | ${YELLOW}%s${NC}\n" "$key" "$val"
         else
             printf "  %-35s | ${GREEN}%s${NC}\n" "$key" "$val"
