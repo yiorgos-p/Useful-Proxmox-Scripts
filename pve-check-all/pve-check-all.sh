@@ -6,7 +6,8 @@
 # each script's issues, and optionally saves the full reports and emails
 # the summary when something needs attention. Read-only, like the checks.
 #
-# Runs, in order: hardware, drive, memory, cluster health, guest audit.
+# Runs, in order: hardware, drive, memory, cluster health, guest audit,
+# backup audit.
 # (Not the ZFS disk replacement helper — that one isn't a check.)
 #
 # Usage:
@@ -29,7 +30,7 @@
 
 RED='\033[0;31m'; YELLOW='\033[1;33m'; GREEN='\033[0;32m'; NC='\033[0m'; BOLD='\033[1m'
 
-CHECKS=(pve-hardware-health-check pve-drive-health-check pve-memory-check pve-cluster-health pve-guest-audit)
+CHECKS=(pve-hardware-health-check pve-drive-health-check pve-memory-check pve-cluster-health pve-guest-audit pve-backup-audit)
 MAX_ISSUES=10   # issues listed per check in the summary
 
 usage() {

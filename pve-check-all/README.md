@@ -2,7 +2,7 @@
 
 Runs every health check in this repo on a Proxmox VE node and prints one combined summary: each check's status and the issues it found. It can save the full reports and email the summary when something needs attention, which makes it easy to run from cron.
 
-It runs, in order: [hardware](../pve-hardware-health-check/), [drive](../pve-drive-health-check/), [memory](../pve-memory-check/), [cluster health](../pve-cluster-health/) and the [guest audit](../pve-guest-audit/). Like them, it's read-only. The [ZFS disk replacement helper](../pve-zfs-replace-disk/) isn't a check and is never run.
+It runs, in order: [hardware](../pve-hardware-health-check/), [drive](../pve-drive-health-check/), [memory](../pve-memory-check/), [cluster health](../pve-cluster-health/), the [guest audit](../pve-guest-audit/) and the [backup audit](../pve-backup-audit/). Like them, it's read-only. The [ZFS disk replacement helper](../pve-zfs-replace-disk/) isn't a check and is never run.
 
 ## Example output
 
@@ -16,6 +16,8 @@ It runs, in order: [hardware](../pve-hardware-health-check/), [drive](../pve-dri
   pve-cluster-health           OK
   pve-guest-audit              WARN
       - 3 snapshot(s) older than 14 days on: VM101 VM104
+  pve-backup-audit             WARN
+      - Newest backup older than 7 days: VM102(10d)
 ```
 
 ## Setup

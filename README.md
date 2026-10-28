@@ -13,6 +13,7 @@ Read-only health-check scripts for Proxmox VE hosts. They inspect hardware, stor
 | [**pve-memory-check**](pve-memory-check/) | ZFS ARC size and limits vs guest RAM, ignored or inactive zfs_arc_max, swap per VM/CT, active swapping, swap on zvol |
 | [**pve-cluster-health**](pve-cluster-health/) | Quorum, corosync link redundancy and packet loss, HA states, replication, time sync and skew, Ceph, certificate expiry |
 | [**pve-guest-audit**](pve-guest-audit/) | Old snapshots, stale locks, dead guest agents, start-on-boot vs HA, cpu=host on mixed clusters, detached and orphaned disks |
+| [**pve-backup-audit**](pve-backup-audit/) | Guests in no backup job, newest backup per guest and its age, failed PBS verification, failed backup tasks, backup storage offline or filling up |
 | [**pve-check-all**](pve-check-all/) | Runs all the checks above, prints one combined summary, saves reports, emails when something needs attention; cron-friendly |
 | [**pve-zfs-replace-disk**](pve-zfs-replace-disk/) | Not a check: works out how to replace a failed ZFS disk (pool, new disk, partition layout, boot setup) and prints the plan; runs it with `--apply` |
 
