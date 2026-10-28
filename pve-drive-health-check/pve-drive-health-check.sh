@@ -433,14 +433,16 @@ check_direct_drives() {
     hr
 
     # Enumerate top-level block devices only (no partitions), skipping
-    # loop devices, ZFS zvols (zd*), device-mapper (dm*, e.g. LUKS/LVM)
-    # and software RAID (md*) — none of those are physical media that
-    # smartctl can query directly.
-    local drives=()
-    while IFS= read -r dev; do
-        [[ "$dev" =~ ^loop|^zd|^dm|^md ]] && continue
+    # anything that isn't physical media smartctl can query directly.
+    # Only TYPE=disk is kept (that drops loop, dm, md, rom), and the
+    # virtual disks that still report as "disk" are skipped by name: zvols,
+    # network block devices (nbd, used by qemu-nbd), zram and Ceph/DRBD.
+    local drives=() dev type
+    while read -r dev type; do
+        [[ "$type" == disk ]] || continue
+        [[ "$dev" =~ ^(zd|nbd|zram|rbd|drbd) ]] && continue
         drives+=("/dev/$dev")
-    done < <(lsblk -dn -o NAME 2>/dev/null)
+    done < <(lsblk -dn -o NAME,TYPE 2>/dev/null)
 
     if [[ ${#drives[@]} -eq 0 ]]; then
         echo "  No block devices found."
