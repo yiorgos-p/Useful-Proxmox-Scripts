@@ -1,0 +1,14 @@
+name: ShellCheck
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  shellcheck:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      # shellcheck comes preinstalled on GitHub's Ubuntu runners.
+      - name: Lint all scripts
+        run: find . -name '*.sh' -print0 | xargs -0 shellcheck --severity=warning

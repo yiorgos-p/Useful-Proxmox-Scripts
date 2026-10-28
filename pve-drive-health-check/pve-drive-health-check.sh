@@ -554,8 +554,15 @@ check_direct_drives() {
         if echo "$errlog" | grep -q "No Errors"; then
             ok "No errors logged"
         else
-            echo "$errlog" | grep -E "error|ATA Error|at LBA" | head -5 | sed 's/^/      /' \
-                || echo "      (empty or unavailable)"
+            # The old `... | sed || echo` fallback never fired (sed succeeds
+            # on empty input), so an empty match printed nothing at all.
+            local errlines
+            errlines=$(echo "$errlog" | grep -E "error|ATA Error|at LBA" | head -5)
+            if [[ -n "$errlines" ]]; then
+                echo "$errlines" | sed 's/^/      /'
+            else
+                echo "      (no error entries reported, or log not supported by this drive)"
+            fi
         fi
     done
 }
@@ -660,15 +667,26 @@ check_vm_configs() {
     local conf_dir="/etc/pve/qemu-server"
     [[ ! -d "$conf_dir" ]] && { echo "  No VM configs found at $conf_dir"; return; }
 
-    local found_issues=false
+    local found_issues=false flagged_vms=0
+
+    # Storage list is the same for every disk line — fetch it once.
+    local pvesm_out
+    pvesm_out=$(pvesm status 2>/dev/null)
 
     for conf in "$conf_dir"/*.conf; do
         [[ -f "$conf" ]] || continue
         vmid=$(basename "$conf" .conf)
+        local vm_flagged=false
 
         # Find disk lines with problematic combinations
         while IFS= read -r line; do
+            # Everything after the first "[section]" header is a snapshot
+            # (or pending changes), each carrying its own copy of the disk
+            # lines. Only audit the live config — otherwise a VM with 8
+            # snapshots gets reported 9 times.
+            [[ "$line" == \[* ]] && break
             [[ "$line" =~ ^(scsi|virtio|sata|ide)[0-9]+: ]] || continue
+            local bus="${line%%:*}"
 
             local problems=()
             local storage
@@ -688,7 +706,7 @@ check_vm_configs() {
             # flagging plain "local" disks as ZFS-backed. This is a common
             # setup: default PVE ships "local" + "local-lvm", and many
             # boxes add "local-zfs" on top.
-            if pvesm status 2>/dev/null | grep -qE "^${storage}[[:space:]]+zfspool"; then
+            if grep -qE "^${storage}[[:space:]]+zfspool" <<< "$pvesm_out"; then
                 is_zfs=true
             fi
 
@@ -708,18 +726,25 @@ check_vm_configs() {
             fi
 
             if [[ ${#problems[@]} -gt 0 ]]; then
-                found_issues=true
-                echo -e "  ${YELLOW}VM $vmid${NC}: $(basename "$conf")"
+                found_issues=true; vm_flagged=true
+                echo -e "  ${YELLOW}VM $vmid${NC} $bus: $(echo "${line#*: }" | cut -c1-110)"
                 for p in "${problems[@]}"; do
-                    warn "    → $p"
-                    echo "    Line: $(echo "$line" | cut -c1-120)"
+                    # VM id + disk in the message itself, so the entry
+                    # still makes sense in the summary's issues list.
+                    warn "VM $vmid $bus: $p"
                 done
                 echo ""
             fi
         done < "$conf"
+        $vm_flagged && ((flagged_vms++))
     done
 
-    $found_issues || ok "No VM disk config issues found"
+    if $found_issues; then
+        RESULTS["VM_DISK_CONFIG"]="$flagged_vms VM(s) flagged"
+    else
+        ok "No VM disk config issues found"
+        RESULTS["VM_DISK_CONFIG"]="OK"
+    fi
 }
 
 # =============================================================================
@@ -741,7 +766,7 @@ print_summary() {
         val="${RESULTS[$key]}"
         if echo "$val" | grep -qiE "FAIL|CRITICAL|OFFLINE|DEGRADED|PENDING|LOW SPARE|FAULTED|UNAVAIL|SUSPENDED|CKSUM"; then
             printf "  %-35s | ${RED}%s${NC}\n" "$key" "$val"
-        elif echo "$val" | grep -qiE "WARN|REBUILD|ERROR|BUSY|HIGH|REALLOCATED|SHIELD"; then
+        elif echo "$val" | grep -qiE "WARN|REBUILD|ERROR|BUSY|HIGH|REALLOCATED|SHIELD|FLAGGED|UNAVAILABLE"; then
             printf "  %-35s | ${YELLOW}%s${NC}\n" "$key" "$val"
         else
             printf "  %-35s | ${GREEN}%s${NC}\n" "$key" "$val"
