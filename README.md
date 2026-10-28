@@ -2,7 +2,7 @@
 
 [![ShellCheck](https://github.com/yiorgos-p/Useful-Proxmox-Scripts/actions/workflows/shellcheck.yml/badge.svg)](https://github.com/yiorgos-p/Useful-Proxmox-Scripts/actions/workflows/shellcheck.yml)
 
-Read-only health-check scripts for Proxmox VE hosts. They inspect hardware, storage, memory, guests, the cluster and configuration, print a colored report with a summary table, and **never change anything**, so they're safe to run on a production node at any time. The one exception is the ZFS disk replacement helper, which only changes anything with `--apply` and asks first.
+Read-only health-check scripts for Proxmox VE hosts. They inspect hardware, storage, memory, guests, backups, the cluster and configuration, print a colored report with a summary table, and **never change anything**, so they're safe to run on a production node at any time. The one exception is the ZFS disk replacement helper, which only changes anything with `--apply` and asks first.
 
 ## Scripts
 
@@ -21,15 +21,22 @@ Each folder has the script and a README with full details.
 
 ## Quick start
 
-Run on the Proxmox host as root:
+Run on the Proxmox host as root. To get everything and run all the checks at once:
+
+```bash
+apt install git     # if it isn't installed yet
+git clone https://github.com/yiorgos-p/Useful-Proxmox-Scripts
+bash Useful-Proxmox-Scripts/pve-check-all/pve-check-all.sh
+```
+
+Update later with `git -C Useful-Proxmox-Scripts pull`. To grab just one script instead:
 
 ```bash
 wget https://raw.githubusercontent.com/yiorgos-p/Useful-Proxmox-Scripts/main/pve-hardware-health-check/pve-hardware-health-check.sh
-chmod +x pve-hardware-health-check.sh
-./pve-hardware-health-check.sh
+bash pve-hardware-health-check.sh
 ```
 
-Swap in the name of any other script for its checks. As with any script from the internet, read it before running it as root.
+Swap in the name of any other script. As with any script from the internet, read it before running it as root.
 
 ## Common behavior
 
