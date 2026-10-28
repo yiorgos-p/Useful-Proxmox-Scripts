@@ -16,8 +16,8 @@
 #   4. Network — physical NIC link/speed/error counters, bridge uplinks
 #      checked against /etc/network/interfaces, bond slave state.
 #   5. Proxmox — core services, failed systemd units, cluster quorum,
-#      failed tasks, running non-HA guests without start-on-boot. Skipped
-#      if this isn't a PVE host.
+#      failed tasks. Skipped if this isn't a PVE host. (Guests without
+#      start-on-boot are checked by pve-guest-audit.)
 #   6. IPMI / BMC — sensor thresholds and recent System Event Log entries,
 #      if ipmitool and a local BMC interface are present.
 #
@@ -708,38 +708,6 @@ for x in t[:5]:
             fi
             RESULTS["PVE_TASKS"]="FAILED: $tcount"
         fi
-    fi
-
-    # ---- Running guests without start-on-boot ----
-    # Only look at the [main] section of each config — snapshot sections
-    # further down carry their own copy of onboot.
-    # HA-managed guests are skipped: the HA stack starts them, and onboot is
-    # deliberately left off for them. Resources set to "state ignored" are
-    # left out of that, since HA won't touch those.
-    local ha_ids
-    ha_ids=" $(awk '
-        /^(vm|ct): *[0-9]+/ { if (id != "" && !ign) print id; id = $2; ign = 0; next }
-        /^[ \t]+state[ \t]+ignored/ { ign = 1 }
-        END { if (id != "" && !ign) print id }' /etc/pve/ha/resources.cfg 2>/dev/null | xargs) "
-    local no_onboot=() vmid status ha_skipped=0
-    while read -r vmid status; do
-        [[ "$status" == running ]] || continue
-        [[ "$ha_ids" == *" $vmid "* ]] && { ha_skipped=$((ha_skipped + 1)); continue; }
-        awk '/^\[/{exit} /^onboot: *1/{f=1} END{exit !f}' "/etc/pve/local/qemu-server/$vmid.conf" 2>/dev/null \
-            || no_onboot+=("VM$vmid")
-    done < <(qm list 2>/dev/null | awk 'NR>1{print $1, $3}')
-    while read -r vmid status; do
-        [[ "$status" == running ]] || continue
-        [[ "$ha_ids" == *" $vmid "* ]] && { ha_skipped=$((ha_skipped + 1)); continue; }
-        awk '/^\[/{exit} /^onboot: *1/{f=1} END{exit !f}' "/etc/pve/local/lxc/$vmid.conf" 2>/dev/null \
-            || no_onboot+=("CT$vmid")
-    done < <(pct list 2>/dev/null | awk 'NR>1{print $1, $2}')
-    (( ha_skipped > 0 )) && echo "  $ha_skipped running guest(s) are HA-managed — start-on-boot not needed"
-    if [[ ${#no_onboot[@]} -gt 0 ]]; then
-        warn "Running guest(s) without start-on-boot — won't come back after a host reboot: ${no_onboot[*]}"
-        RESULTS["PVE_ONBOOT"]="NO ONBOOT: ${#no_onboot[@]}"
-    else
-        ok "All running non-HA guests start on boot"
     fi
 }
 

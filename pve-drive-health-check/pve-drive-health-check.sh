@@ -20,7 +20,7 @@
 #   - zfsutils-linux (zpool/zfs) for section 2 — skipped entirely if no
 #     `zpool` binary or no imported pools are found
 #   - smartmontools (smartctl) for section 3
-#   - sysstat (iostat) for section 4 — script warns and skips if missing
+#   - sysstat (iostat) for section 4 — skipped if missing
 #   - storcli64/storcli/perccli64/perccli/MegaCli64 for section 1 — script
 #     skips RAID checks entirely if none is found (e.g. plain JBOD/NVMe box)
 #
@@ -470,6 +470,15 @@ check_direct_drives() {
             if $HAS_RAID && echo "$info" | grep -qi "unable\|failed\|doesn't\|not available"; then
                 echo "    Likely behind RAID controller — checked above via storcli."
                 RESULTS["SMART_${drive}"]="VIA RAID CONTROLLER"
+            elif echo "$info" | grep -q "SMART support is: Disabled"; then
+                warn "$drive: SMART is supported but switched off — enable with: smartctl -s on $drive"
+                RESULTS["SMART_${drive}"]="SMART DISABLED"
+            elif [[ "$(lsblk -dno TRAN "$drive" 2>/dev/null)" == usb ]] \
+                || echo "$info" | grep -q "SMART support is: Unavailable"; then
+                # USB sticks, SD-card modules (e.g. Dell IDSDM) and virtual
+                # disks have no SMART to read — nothing to fix there.
+                echo "    No SMART on this device ($(lsblk -dno TRAN,MODEL "$drive" 2>/dev/null | xargs)) — skipped."
+                RESULTS["SMART_${drive}"]="NO SMART (skipped)"
             else
                 warn "$drive: SMART not enabled or not supported"
                 RESULTS["SMART_${drive}"]="SMART UNAVAILABLE"
@@ -579,7 +588,9 @@ check_io() {
     echo ""
 
     if ! command -v iostat &>/dev/null; then
-        warn "iostat not found — install sysstat: apt install sysstat"
+        # A missing tool isn't a problem with the host, so no warning.
+        echo "  iostat not found — section skipped (apt install sysstat to enable it)"
+        RESULTS["IO_STATS"]="SKIPPED (no sysstat)"
         return
     fi
 
@@ -768,7 +779,7 @@ print_summary() {
         val="${RESULTS[$key]}"
         if echo "$val" | grep -qiE "FAIL|CRITICAL|OFFLINE|DEGRADED|PENDING|LOW SPARE|FAULTED|UNAVAIL|SUSPENDED|CKSUM"; then
             printf "  %-35s | ${RED}%s${NC}\n" "$key" "$val"
-        elif echo "$val" | grep -qiE "WARN|REBUILD|ERROR|BUSY|HIGH|REALLOCATED|SHIELD|FLAGGED|UNAVAILABLE"; then
+        elif echo "$val" | grep -qiE "WARN|REBUILD|ERROR|BUSY|HIGH|REALLOCATED|SHIELD|FLAGGED|UNAVAILABLE|DISABLED"; then
             printf "  %-35s | ${YELLOW}%s${NC}\n" "$key" "$val"
         else
             printf "  %-35s | ${GREEN}%s${NC}\n" "$key" "$val"

@@ -10,7 +10,7 @@ It's the companion to the [drive health checker](../pve-drive-health-check/), wh
 2. **Temperatures**: read directly from hwmon sysfs (lm-sensors not required). Uses each sensor's own limits where it publishes them, with sane defaults for AMD, Intel, NVMe and SATA drives. Flags a CCD temperature spread over 20°C on Ryzen/EPYC (cooler contact or paste) and thermal throttling events.
 3. **Kernel log**: PCIe AER errors (with the device named via `lspci`), OOM kills mapped to the VM or container ID that was killed, block I/O errors, lockups/oopses/panics, and how many times the host booted in the window.
 4. **Network**: physical NIC link state, negotiated speed, duplex and error counters (judged as a share of traffic, so a handful of errors on a busy link isn't flagged). Every `bridge-ports` entry in `/etc/network/interfaces` is checked against the real interfaces, which catches the classic "NIC renamed after a hardware swap, vmbr0 has no uplink" failure. Also checks bond slave state.
-5. **Proxmox**: core PVE services, failed systemd units, cluster quorum (if clustered), failed tasks in the window (backups called out), and running guests that won't start on boot. HA-managed guests are skipped there, since the HA stack starts them.
+5. **Proxmox**: core PVE services, failed systemd units, cluster quorum (if clustered), and failed tasks in the window (backups called out). Guests that won't start on boot are checked by [pve-guest-audit](../pve-guest-audit/).
 6. **IPMI / BMC**: sensor threshold status and System Event Log entries from the window (PSU, fan, voltage and ECC events the OS may never see). Works with iDRAC, iLO and Supermicro BMCs through `ipmitool`.
 
 Storage (ZFS pool state, SMART) is left to the drive health checker.
