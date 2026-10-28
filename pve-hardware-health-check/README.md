@@ -9,8 +9,8 @@ It's the companion to the [drive health checker](../pve-drive-health-check/), wh
 1. **ECC memory / machine checks**: EDAC corrected/uncorrected counters (per DIMM where the driver exposes it), rasdaemon history if installed, and MCE/EDAC lines in the kernel log. Warns if the board has ECC but no EDAC driver is loaded, since errors are then corrected silently with nobody counting.
 2. **Temperatures**: read directly from hwmon sysfs (lm-sensors not required). Uses each sensor's own limits where it publishes them, with sane defaults for AMD, Intel, NVMe and SATA drives. Flags a CCD temperature spread over 20°C on Ryzen/EPYC (cooler contact or paste) and thermal throttling events.
 3. **Kernel log**: PCIe AER errors (with the device named via `lspci`), OOM kills mapped to the VM or container ID that was killed, block I/O errors, lockups/oopses/panics, and how many times the host booted in the window.
-4. **Network**: physical NIC link state, negotiated speed, duplex and error counters. Every `bridge-ports` entry in `/etc/network/interfaces` is checked against the real interfaces, which catches the classic "NIC renamed after a hardware swap, vmbr0 has no uplink" failure. Also checks bond slave state.
-5. **Proxmox**: core PVE services, failed systemd units, cluster quorum (if clustered), failed tasks in the window (backups called out), and running guests that won't start on boot.
+4. **Network**: physical NIC link state, negotiated speed, duplex and error counters (judged as a share of traffic, so a handful of errors on a busy link isn't flagged). Every `bridge-ports` entry in `/etc/network/interfaces` is checked against the real interfaces, which catches the classic "NIC renamed after a hardware swap, vmbr0 has no uplink" failure. Also checks bond slave state.
+5. **Proxmox**: core PVE services, failed systemd units, cluster quorum (if clustered), failed tasks in the window (backups called out), and running guests that won't start on boot. HA-managed guests are skipped there, since the HA stack starts them.
 6. **IPMI / BMC**: sensor threshold status and System Event Log entries from the window (PSU, fan, voltage and ECC events the OS may never see). Works with iDRAC, iLO and Supermicro BMCs through `ipmitool`.
 
 Storage (ZFS pool state, SMART) is left to the drive health checker.
@@ -21,7 +21,7 @@ Storage (ZFS pool state, SMART) is left to the drive health checker.
 - bash 4+, `dmidecode`, `pciutils` (all present on a stock PVE install)
 - `ipmitool` for section 6 (skipped if missing, or if there's no local BMC interface)
 - `rasdaemon` (optional): adds ECC error history that survives reboots
-- A persistent journal (`/var/log/journal`) to see errors from before the last reboot. Without it, only the current boot is covered.
+- A persistent journal (`/var/log/journal`) to see errors from before the last reboot. Without it, the script falls back to `dmesg`, which only covers the current boot (still trimmed to the `-d` window).
 
 ## Usage
 
@@ -46,7 +46,7 @@ Useful for wiring into cron, Nagios/Zabbix, or a Prometheus textfile collector.
 ## Notes
 
 - Read-only: it only reads sysfs, logs and configs. It never writes to hardware, network config, guests or the BMC, and it doesn't clear the SEL.
-- EDAC and NIC error counters are since boot; the log-based checks cover the `-d` window.
+- EDAC and NIC error counters are since boot; the log-based checks cover the `-d` window. NIC errors only warn above 1 in 100,000 packets; below that the count is printed for information.
 - The BMC event log is never cleared automatically, so only entries inside the window are scored. Review older entries yourself and clear them with `ipmitool sel clear` once dealt with.
 - A NIC counts as "in use" if its name appears anywhere in `/etc/network/interfaces`. Unused ports that are down are listed but not flagged.
 - Inside a VM most sections have nothing to check and say so.

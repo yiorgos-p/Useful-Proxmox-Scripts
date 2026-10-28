@@ -16,8 +16,8 @@
 #   4. Network — physical NIC link/speed/error counters, bridge uplinks
 #      checked against /etc/network/interfaces, bond slave state.
 #   5. Proxmox — core services, failed systemd units, cluster quorum,
-#      failed tasks, running guests without start-on-boot. Skipped if this
-#      isn't a PVE host.
+#      failed tasks, running non-HA guests without start-on-boot. Skipped
+#      if this isn't a PVE host.
 #   6. IPMI / BMC — sensor thresholds and recent System Event Log entries,
 #      if ipmitool and a local BMC interface are present.
 #
@@ -87,20 +87,36 @@ SINCE_EPOCH=$(date -d "$DAYS days ago" +%s)
 # Deliberately `_TRANSPORT=kernel` rather than `journalctl -k`: -k implies
 # -b (current boot only), which would hide everything from before the last
 # reboot — and if the box crashed, that's exactly the part you want.
-# Falls back to dmesg (current boot only) if there's no journal.
+#
+# The window is passed as an absolute timestamp: older systemd versions are
+# picky about relative forms like "7 days ago". The match also ORs in
+# SYSLOG_IDENTIFIER=kernel, which catches kernel lines that reached the
+# journal through syslog rather than /dev/kmsg.
+#
+# Falls back to dmesg (current boot only) if the journal gives nothing, and
+# trims that to the same window so old lines from a long uptime don't show.
 KLOG=""
 KLOG_SRC=""
+SINCE_ISO=$(date -d "@$SINCE_EPOCH" '+%Y-%m-%d %H:%M:%S')
 if command -v journalctl &>/dev/null; then
-    KLOG=$(journalctl -q --no-pager -o short-iso _TRANSPORT=kernel --since "$DAYS days ago" 2>/dev/null)
-    if [[ -d /var/log/journal ]]; then
+    KLOG=$(journalctl -q --no-pager -o short-iso --since "$SINCE_ISO" \
+               _TRANSPORT=kernel + SYSLOG_IDENTIFIER=kernel 2>/dev/null)
+    if [[ -n "$KLOG" && -d /var/log/journal ]]; then
         KLOG_SRC="journal, last $DAYS days"
-    else
+    elif [[ -n "$KLOG" ]]; then
         KLOG_SRC="journal is not persistent — current boot only"
     fi
 fi
 if [[ -z "$KLOG" ]]; then
-    KLOG=$(dmesg -T 2>/dev/null)
-    KLOG_SRC="dmesg — current boot only"
+    # ISO timestamps sort as plain strings, so the window filter is a
+    # string compare on the first 19 characters (YYYY-MM-DDTHH:MM:SS).
+    KLOG=$(dmesg --time-format iso 2>/dev/null |
+               awk -v cut="${SINCE_ISO/ /T}" 'substr($1, 1, 19) >= cut')
+    if command -v journalctl &>/dev/null; then
+        KLOG_SRC="dmesg, current boot, last $DAYS days (journal returned no kernel messages)"
+    else
+        KLOG_SRC="dmesg, current boot, last $DAYS days"
+    fi
 fi
 
 # =============================================================================
@@ -470,12 +486,13 @@ check_network() {
         any_nic=true
         nic=$(basename "$n")
 
-        local carrier speed duplex rxe txe rxd crc used=false
+        local carrier speed duplex rxe txe rxd crc rxp txp used=false
         # Reading carrier fails (EINVAL) on an admin-down interface.
         carrier=$(rd "$n/carrier"); carrier=${carrier:-0}
         speed=$(rd "$n/speed"); duplex=$(rd "$n/duplex")
         rxe=$(rd "$n/statistics/rx_errors"); txe=$(rd "$n/statistics/tx_errors")
         rxd=$(rd "$n/statistics/rx_dropped"); crc=$(rd "$n/statistics/rx_crc_errors")
+        rxp=$(rd "$n/statistics/rx_packets"); txp=$(rd "$n/statistics/tx_packets")
         [[ "$speed" =~ ^[0-9]+$ ]] || speed=""
         # "In use" = mentioned anywhere in the network config (bridge port,
         # bond slave, VLAN parent, own IP). -w treats "." as a boundary, so
@@ -495,10 +512,18 @@ check_network() {
             [[ -n "$speed" ]] && (( speed < 1000 )) && problems+=("negotiated ${speed}Mb/s — bad cable or switch port?")
             [[ "$duplex" == half ]] && problems+=("half duplex")
         fi
-        # Counters are since boot. Any real error on modern Ethernet is
-        # worth a look; CRC errors in particular point at cabling/optics.
-        if [[ "${rxe:-0}" != 0 || "${txe:-0}" != 0 ]]; then
-            problems+=("rx_errors=${rxe} tx_errors=${txe}${crc:+ (crc=$crc)} since boot")
+        # Counters are since boot, so judge them as a share of traffic: a few
+        # dozen errors over billions of packets is noise, while a bad cable
+        # or optic runs well above 1 in 100,000.
+        local errs=$(( ${rxe:-0} + ${txe:-0} )) pkts=$(( ${rxp:-0} + ${txp:-0} ))
+        if (( errs > 0 )); then
+            local rate
+            rate=$(awk -v e="$errs" -v p="$pkts" 'BEGIN{ if (p > 0) printf "%.6f%%", 100*e/p; else print "n/a" }')
+            if (( errs * 100000 >= pkts )); then
+                problems+=("rx_errors=${rxe} tx_errors=${txe}${crc:+ (crc=$crc)} since boot, ${rate} of packets")
+            else
+                echo "      $nic: $errs error(s) since boot, ${rate} of packets — below the 0.001% warning level"
+            fi
         fi
 
         if [[ ${#problems[@]} -eq 0 ]]; then
@@ -688,22 +713,33 @@ for x in t[:5]:
     # ---- Running guests without start-on-boot ----
     # Only look at the [main] section of each config — snapshot sections
     # further down carry their own copy of onboot.
-    local no_onboot=() vmid status
+    # HA-managed guests are skipped: the HA stack starts them, and onboot is
+    # deliberately left off for them. Resources set to "state ignored" are
+    # left out of that, since HA won't touch those.
+    local ha_ids
+    ha_ids=" $(awk '
+        /^(vm|ct): *[0-9]+/ { if (id != "" && !ign) print id; id = $2; ign = 0; next }
+        /^[ \t]+state[ \t]+ignored/ { ign = 1 }
+        END { if (id != "" && !ign) print id }' /etc/pve/ha/resources.cfg 2>/dev/null | xargs) "
+    local no_onboot=() vmid status ha_skipped=0
     while read -r vmid status; do
         [[ "$status" == running ]] || continue
+        [[ "$ha_ids" == *" $vmid "* ]] && { ha_skipped=$((ha_skipped + 1)); continue; }
         awk '/^\[/{exit} /^onboot: *1/{f=1} END{exit !f}' "/etc/pve/local/qemu-server/$vmid.conf" 2>/dev/null \
             || no_onboot+=("VM$vmid")
     done < <(qm list 2>/dev/null | awk 'NR>1{print $1, $3}')
     while read -r vmid status; do
         [[ "$status" == running ]] || continue
+        [[ "$ha_ids" == *" $vmid "* ]] && { ha_skipped=$((ha_skipped + 1)); continue; }
         awk '/^\[/{exit} /^onboot: *1/{f=1} END{exit !f}' "/etc/pve/local/lxc/$vmid.conf" 2>/dev/null \
             || no_onboot+=("CT$vmid")
     done < <(pct list 2>/dev/null | awk 'NR>1{print $1, $2}')
+    (( ha_skipped > 0 )) && echo "  $ha_skipped running guest(s) are HA-managed — start-on-boot not needed"
     if [[ ${#no_onboot[@]} -gt 0 ]]; then
         warn "Running guest(s) without start-on-boot — won't come back after a host reboot: ${no_onboot[*]}"
         RESULTS["PVE_ONBOOT"]="NO ONBOOT: ${#no_onboot[@]}"
     else
-        ok "All running guests start on boot"
+        ok "All running non-HA guests start on boot"
     fi
 }
 
