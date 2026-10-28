@@ -2,7 +2,7 @@
 
 [![ShellCheck](https://github.com/yiorgos-p/Useful-Proxmox-Scripts/actions/workflows/shellcheck.yml/badge.svg)](https://github.com/yiorgos-p/Useful-Proxmox-Scripts/actions/workflows/shellcheck.yml)
 
-Read-only health-check scripts for Proxmox VE hosts. They inspect hardware, storage, guests and configuration, print a colored report with a summary table, and **never change anything**, so they're safe to run on a production node at any time.
+Read-only health-check scripts for Proxmox VE hosts. They inspect hardware, storage, guests, the cluster and configuration, print a colored report with a summary table, and **never change anything**, so they're safe to run on a production node at any time.
 
 ## Scripts
 
@@ -10,6 +10,7 @@ Read-only health-check scripts for Proxmox VE hosts. They inspect hardware, stor
 |---|---|
 | [**pve-drive-health-check**](pve-drive-health-check/) | RAID controller, ZFS pools, SMART, live IO load, VM disk cache/discard settings |
 | [**pve-hardware-health-check**](pve-hardware-health-check/) | ECC memory, temperatures, kernel hardware errors, NIC and bridge uplinks, PVE services and failed tasks, IPMI sensors and event log |
+| [**pve-cluster-health**](pve-cluster-health/) | Quorum, corosync link redundancy and packet loss, HA states, replication, time sync and skew, Ceph, certificate expiry |
 | [**pve-guest-audit**](pve-guest-audit/) | Old snapshots, stale locks, dead guest agents, start-on-boot vs HA, cpu=host on mixed clusters, detached and orphaned disks |
 
 Each folder has the script and a README with full details.
@@ -24,7 +25,7 @@ chmod +x pve-hardware-health-check.sh
 ./pve-hardware-health-check.sh
 ```
 
-Swap in `pve-drive-health-check` or `pve-guest-audit` for the other checks. As with any script from the internet, read it before running it as root.
+Swap in the name of any other script for its checks. As with any script from the internet, read it before running it as root.
 
 ## Common behavior
 
