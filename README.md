@@ -36,6 +36,10 @@ Swap in the name of any other script for its checks. As with any script from the
 - **Skips what isn't there**: no RAID controller, no ZFS, no BMC or not a PVE host means that section is skipped instead of erroring.
 - **Monitoring-friendly exit codes**: `0` clean, `1` warnings, `2` critical (the guest audit only uses `0` and `1`). Easy to wire into cron, Nagios/Zabbix or a Prometheus textfile collector.
 
+## Disclaimer
+
+Provided as-is, without warranty of any kind (see the [LICENSE](LICENSE)). Read a script before running it, check that its findings make sense for your setup, and try `pve-zfs-replace-disk` without `--apply` first so you can review its plan.
+
 ## License
 
 MIT, see [LICENSE](LICENSE).

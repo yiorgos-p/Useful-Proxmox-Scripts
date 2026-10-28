@@ -30,6 +30,7 @@
 RED='\033[0;31m'; YELLOW='\033[1;33m'; GREEN='\033[0;32m'; NC='\033[0m'; BOLD='\033[1m'
 
 CHECKS=(pve-hardware-health-check pve-drive-health-check pve-memory-check pve-cluster-health pve-guest-audit)
+MAX_ISSUES=10   # issues listed per check in the summary
 
 usage() {
     echo "Usage: $0 [-o DIR] [-m ADDRESS] [-q]"
@@ -87,7 +88,7 @@ done
 # Each check ends with "Issues requiring attention (N):" followed by one
 # "→ ..." line per issue; pull those out.
 summary() {
-    local c rc label issues
+    local c rc label issues n
     echo "PVE check-all summary for $HOST — $(date)"
     echo ""
     for c in "${CHECKS[@]}"; do
@@ -102,7 +103,13 @@ summary() {
         printf "  %-28s %s\n" "$c" "$label"
         if [[ "$rc" == 1 || "$rc" == 2 ]]; then
             issues=$(sed -n '/Issues requiring attention/,$p' "$WORK/$c.log" | grep '→' | sed 's/^ *→ */      - /')
-            [[ -n "$issues" ]] && echo "$issues"
+            if [[ -n "$issues" ]]; then
+                # Keep the summary (and the email) readable when one check
+                # finds dozens of issues; the full list is in its report.
+                n=$(wc -l <<< "$issues")
+                head -n "$MAX_ISSUES" <<< "$issues"
+                (( n > MAX_ISSUES )) && echo "      ... and $((n - MAX_ISSUES)) more (full list in the $c report)"
+            fi
         elif [[ "$rc" != 0 && "$rc" != missing ]]; then
             # Exit 3: the script says why on its last line.
             echo "      $(grep -v '^$' "$WORK/$c.log" | tail -1)"
